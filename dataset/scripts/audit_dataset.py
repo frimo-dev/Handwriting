@@ -2,7 +2,6 @@
 import argparse
 import json
 import re
-import sys
 from collections import Counter
 from pathlib import Path
 
@@ -10,10 +9,7 @@ import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC_DIR = PROJECT_ROOT / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-import config  # noqa: E402
+import text_codec as config  # Dataset tools do not need to import PyTorch.
 
 
 PUNCTUATION = set("„“.,!?-;:()")

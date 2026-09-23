@@ -1,20 +1,18 @@
+import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
-import tqdm
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATASET_DIR = PROJECT_ROOT / "dataset"
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-import config  # noqa: E402
+import text_codec
+
+DEFAULT_DATASET_DIR = Path(__file__).resolve().parents[1]
 
 
 def convert(json_path, txt_path, out_npz):
     with open(json_path, "r", encoding="utf-8") as f:
         trajectory = json.load(f)
-    with open(txt_path, "r", encoding="utf-8") as f:
+    with open(txt_path, "r", encoding="utf-8-sig") as f:
         text = f.read()
 
     pts = np.asarray(trajectory, dtype=np.float32)
@@ -23,22 +21,35 @@ def convert(json_path, txt_path, out_npz):
     pts[:, 2] = (pts[:, 2] == 1).astype(np.float32)
     pts[-1, 2] = 1.0
 
+    unsupported = text_codec.unsupported_tokens(text, normalize=True)
+    if unsupported:
+        printable = ", ".join(repr(token) for token in unsupported)
+        print(
+            f"Warning {txt_path.name}: unsupported symbols will be encoded as spaces: {printable}"
+        )
+
     text_indices = np.asarray(
-        config.encode_text(
+        text_codec.encode_text(
             text,
-            append_eos=getattr(config, "append_eos_to_dataset", True),
+            append_eos=text_codec.append_eos_to_dataset,
             normalize=True,
         ),
         dtype=np.int64,
     )
-    np.savez_compressed(out_npz, points=pts, text_indices=text_indices)
+    np.savez_compressed(
+        out_npz,
+        points=pts,
+        text_indices=text_indices,
+        vocab_tokens=np.asarray(text_codec.VOCAB_TOKENS),
+        eos_token=np.asarray([text_codec.EOS_TOKEN]),
+    )
 
 
 def merge_npz(npz_files, out_npz):
     all_points = []
     all_texts = []
 
-    for file_path in tqdm.tqdm(npz_files, desc="Merging"):
+    for file_path in npz_files:
         data = np.load(file_path, allow_pickle=True)
         pts = data["points"]
         text_indices = data["text_indices"]
@@ -53,27 +64,48 @@ def merge_npz(npz_files, out_npz):
         out_npz,
         points=np.asarray(all_points, dtype=object),
         text_indices=np.asarray(all_texts, dtype=object),
+        vocab_tokens=np.asarray(text_codec.VOCAB_TOKENS),
+        eos_token=np.asarray([text_codec.EOS_TOKEN]),
     )
 
 
 def main():
-    (DATASET_DIR / "npzs").mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(
+        description="Build all_trajectories.npz from trajectory JSON/TXT pairs."
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        default=str(DEFAULT_DATASET_DIR),
+        help="Folder that contains jsons/, texts/ and npzs/. Defaults to the parent of this scripts/ folder.",
+    )
+    args = parser.parse_args()
+
+    dataset_dir = Path(args.dataset_dir).expanduser().resolve()
+    json_dir = dataset_dir / "jsons"
+    text_dir = dataset_dir / "texts"
+    npz_dir = dataset_dir / "npzs"
+    npz_dir.mkdir(parents=True, exist_ok=True)
+
     npz_files = []
     json_files = sorted(
-        (DATASET_DIR / "jsons").glob("trajectory_*.json"),
+        json_dir.glob("trajectory_*.json"),
         key=lambda p: int(p.stem.split("_")[-1]),
     )
-    for json_path in tqdm.tqdm(json_files, desc="Converting json"):
+    for json_path in json_files:
         idx = json_path.stem.split("_")[-1]
-        txt_path = DATASET_DIR / "texts" / f"trajectory_{idx}.txt"
+        txt_path = text_dir / f"trajectory_{idx}.txt"
         if not txt_path.exists():
             print(f"Skip {json_path.name}: missing {txt_path.name}")
             continue
-        out_npz = DATASET_DIR / "npzs" / f"handwriting_trajectory_{idx}.npz"
+        out_npz = npz_dir / f"handwriting_trajectory_{idx}.npz"
         convert(json_path, txt_path, out_npz)
         npz_files.append(out_npz)
 
-    merge_npz(npz_files, DATASET_DIR / "all_trajectories.npz")
+    if not npz_files:
+        raise FileNotFoundError(f"No complete trajectory JSON/TXT pairs found in {dataset_dir}")
+
+    merge_npz(npz_files, dataset_dir / "all_trajectories.npz")
+    print(f"Built {len(npz_files)} samples: {dataset_dir / 'all_trajectories.npz'}")
 
 
 if __name__ == "__main__":

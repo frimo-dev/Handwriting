@@ -66,7 +66,19 @@ def cmd_status(args):
 
 
 def cmd_dataset(args):
-    run_python(["dataset/scripts/converter.py"])
+    run_python(["dataset/scripts/converter.py", "--dataset-dir", args.dataset_dir])
+
+
+def cmd_label_dataset(args):
+    command = ["dataset/scripts/label_trajectories.py", "--dataset-dir", args.dataset_dir]
+    command.append("--edit" if args.edit else "--review")
+    if args.start is not None:
+        command.extend(["--start", str(args.start)])
+    run_python(command)
+
+
+def cmd_record_dataset(args):
+    run_python(["dataset/scripts/record_trajectories.py"])
 
 
 def cmd_audit_dataset(args):
@@ -344,7 +356,17 @@ def build_parser():
     status.set_defaults(func=cmd_status)
 
     dataset = subparsers.add_parser("dataset", help="Rebuild dataset/all_trajectories.npz.")
+    dataset.add_argument("--dataset-dir", default="dataset")
     dataset.set_defaults(func=cmd_dataset)
+
+    label = subparsers.add_parser("label-dataset", help="View trajectories or edit their text labels.")
+    label.add_argument("--dataset-dir", default="dataset")
+    label.add_argument("--start", type=int)
+    label.add_argument("--edit", action="store_true", help="Enable label editing; default is read-only.")
+    label.set_defaults(func=cmd_label_dataset)
+
+    record = subparsers.add_parser("record-dataset", help="Open the mouse/pen trajectory recorder.")
+    record.set_defaults(func=cmd_record_dataset)
 
     audit = subparsers.add_parser("audit-dataset", help="Audit dataset character coverage and sequence lengths.")
     audit.add_argument("--dataset", default="dataset/all_trajectories.npz")

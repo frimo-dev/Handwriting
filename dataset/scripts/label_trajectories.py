@@ -5,10 +5,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
-
-DATASET_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DATASET_DIR = Path(__file__).resolve().parents[1].joinpath('dataset').joinpath('single_line')
+DATASET_DIR = DEFAULT_DATASET_DIR
 JSON_DIR = DATASET_DIR / "jsons"
 TEXT_DIR = DATASET_DIR / "texts"
 
@@ -22,6 +20,14 @@ def trajectory_index(path):
 
 def text_path_for(json_path):
     return TEXT_DIR / f"{json_path.stem}.txt"
+
+
+def configure_paths(dataset_dir):
+    global DATASET_DIR, JSON_DIR, TEXT_DIR
+
+    DATASET_DIR = Path(dataset_dir).expanduser().resolve()
+    JSON_DIR = DATASET_DIR / "jsons"
+    TEXT_DIR = DATASET_DIR / "texts"
 
 
 def load_points(json_path):
@@ -47,10 +53,9 @@ def draw_points(ax, points):
         xs, ys = [], []
 
     for x, y, state in points:
-        if state == 0:
-            xs.append(x)
-            ys.append(y)
-        elif state == 1:
+        xs.append(x)
+        ys.append(y)
+        if state == 1:
             flush()
 
     flush()
@@ -81,6 +86,12 @@ class TrajectoryLabeler:
         self.show_current()
 
     def build_ui(self):
+        from matplotlib.backends.backend_tkagg import (
+            FigureCanvasTkAgg,
+            NavigationToolbar2Tk,
+        )
+        from matplotlib.figure import Figure
+
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=1)
 
@@ -339,6 +350,11 @@ def find_start_index(paths, requested_start=None, first_missing=True):
 
 def main():
     parser = argparse.ArgumentParser(description="Label trajectory JSON files with text files.")
+    parser.add_argument(
+        "--dataset-dir",
+        default=str(DEFAULT_DATASET_DIR),
+        help="Folder that contains jsons/ and texts/. Defaults to the parent of this scripts/ folder.",
+    )
     parser.add_argument("--start", type=int, help="Start from trajectory_N.json.")
     parser.add_argument(
         "--review",
@@ -351,6 +367,7 @@ def main():
         help="Start in edit mode.",
     )
     args = parser.parse_args()
+    configure_paths(args.dataset_dir)
 
     paths = find_json_paths()
     if not paths:
