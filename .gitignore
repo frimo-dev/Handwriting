@@ -26,6 +26,7 @@ training.log
 
 # Generated dataset artifacts. Keep dataset/jsons and dataset/texts in Git.
 dataset/npzs/
+dataset/single_line/
 
 # Generated outputs/previews
 runs/
